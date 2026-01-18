@@ -117,37 +117,37 @@ if menu == "📊 Dashboard (Xem)":
     
     st.dataframe(df, use_container_width=True)
 
-# --- TAB 2: THÊM MỚI (Có Cascading Dropdown) ---
+# --- TAB 2: THÊM MỚI (Đã sửa lỗi Cascading) ---
 elif menu == "✍️ Thêm mới":
     st.header("Thêm dữ liệu mới")
     
-    with st.form("form_them_moi", clear_on_submit=False): # Để False để giữ giá trị Huyện khi reload
-        col_a, col_b = st.columns(2)
-        
-        # --- LOGIC CASCADING DROPDOWN ---
-        # 1. Lấy danh sách Huyện
-        ds_huyen = lay_ds_huyen()
-        # Streamlit selectbox trả về giá trị người dùng chọn
-        chon_huyen = col_a.selectbox("Chọn Huyện", ds_huyen)
-        
-        # 2. Lấy danh sách Xã tương ứng với Huyện vừa chọn
-        # (Streamlit sẽ tự chạy lại code từ đầu khi biến chon_huyen thay đổi)
-        ds_xa = lay_ds_xa(chon_huyen)
-        chon_xa = col_b.selectbox("Chọn Xã", ds_xa)
-        
-        # Các ô nhập liệu khác
-        col1, col2 = st.columns(2)
-        v_nam = col1.number_input("Năm", 2000, 2030, 2024)
-        v_phongho = col2.number_input("Rừng phòng hộ (ha)", 0.0)
-        v_dacdung = col1.number_input("Rừng đặc dụng (ha)", 0.0)
-        v_sanxuat = col2.number_input("Rừng sản xuất (ha)", 0.0)
-        v_go = col1.number_input("Sản lượng gỗ (m3)", 0.0)
-        v_chephu = col2.slider("Tỷ lệ che phủ (%)", 0.0, 100.0, 40.0)
-        v_trongrung = col1.number_input("Kết quả trồng rừng (ha)", 0.0)
-        
-        btn_them = st.form_submit_button("Lưu dữ liệu mới 💾")
-        
-        if btn_them:
+    col_a, col_b = st.columns(2)
+    
+    # --- PHẦN 1: CHỌN HUYỆN XÃ (Để ở ngoài để tự động load lại trang) ---
+    ds_huyen = lay_ds_huyen()
+    # index=0 nghĩa là mặc định chọn cái đầu tiên
+    chon_huyen = col_a.selectbox("Chọn Huyện", ds_huyen, key="add_huyen")
+    
+    ds_xa = lay_ds_xa(chon_huyen)
+    chon_xa = col_b.selectbox("Chọn Xã", ds_xa, key="add_xa")
+    
+    st.write("---") # Đường kẻ ngang phân cách
+    
+    # --- PHẦN 2: NHẬP SỐ LIỆU ---
+    col1, col2 = st.columns(2)
+    v_nam = col1.number_input("Năm", 2000, 2030, 2024, key="add_nam")
+    v_phongho = col2.number_input("Rừng phòng hộ (ha)", 0.0, key="add_ph")
+    v_dacdung = col1.number_input("Rừng đặc dụng (ha)", 0.0, key="add_dd")
+    v_sanxuat = col2.number_input("Rừng sản xuất (ha)", 0.0, key="add_sx")
+    v_go = col1.number_input("Sản lượng gỗ (m3)", 0.0, key="add_go")
+    v_chephu = col2.slider("Tỷ lệ che phủ (%)", 0.0, 100.0, 40.0, key="add_cp")
+    v_trongrung = col1.number_input("Kết quả trồng rừng (ha)", 0.0, key="add_tr")
+    
+    # Nút Lưu (Dùng button thường, không dùng form_submit_button nữa)
+    if st.button("Lưu dữ liệu mới 💾", type="primary"):
+        if not chon_huyen or not chon_xa:
+             st.error("Vui lòng kiểm tra lại Huyện và Xã!")
+        else:
             params = (chon_huyen, chon_xa, v_nam, v_phongho, v_dacdung, v_sanxuat, v_go, v_chephu, v_trongrung)
             ok, msg = them_moi_sql(params)
             if ok:
@@ -161,41 +161,51 @@ elif menu == "✍️ Thêm mới":
 elif menu == "🛠️ Quản lý (Sửa/Xóa)":
     st.header("Chỉnh sửa dữ liệu")
     
-    # Hiển thị bảng để người dùng nhìn ID
     df = load_data()
     st.dataframe(df.head(5), use_container_width=True)
     st.info("💡 Nhìn bảng trên để lấy ID bản ghi cần sửa/xóa")
     
-    # Chọn ID cần thao tác
     list_id = df['id'].tolist()
     id_chon = st.selectbox("Chọn ID bản ghi cần Sửa/Xóa:", list_id)
     
     if id_chon:
-        # Lấy dữ liệu cũ của ID đó đổ vào form
         record = lay_chi_tiet_theo_id(id_chon)
         
         if record is not None:
             st.write("---")
+            st.subheader(f"Đang sửa bản ghi ID: {id_chon}")
+            
             col_x, col_y = st.columns(2)
             
-            # Form cập nhật (Fill sẵn dữ liệu cũ)
-            # Lưu ý: Selectbox cần tìm đúng index của giá trị cũ
+            # --- LOGIC CASCADING CHO PHẦN SỬA ---
             ds_huyen = lay_ds_huyen()
+            
+            # Tìm vị trí của huyện cũ trong danh sách mới
             try:
-                index_huyen = ds_huyen.index(record['huyen'])
+                index_huyen_cu = ds_huyen.index(record['huyen'])
             except:
-                index_huyen = 0
+                index_huyen_cu = 0
             
-            u_huyen = col_x.selectbox("Huyện", ds_huyen, index=index_huyen, key="edit_huyen")
+            # Selectbox Huyện
+            u_huyen = col_x.selectbox("Huyện", ds_huyen, index=index_huyen_cu, key="edit_huyen")
             
-            # Xã (Cascading cho phần Sửa)
+            # Selectbox Xã (Tự động cập nhật theo u_huyen vừa chọn)
             ds_xa = lay_ds_xa(u_huyen)
-            try:
-                index_xa = ds_xa.index(record['xa'])
-            except:
-                index_xa = 0
-            u_xa = col_y.selectbox("Xã", ds_xa, index=index_xa, key="edit_xa")
             
+            # Logic thông minh: 
+            # Nếu huyện vẫn là huyện cũ -> Chọn xã cũ.
+            # Nếu người dùng đổi huyện mới -> Chọn xã đầu tiên của huyện mới (index 0).
+            try:
+                if u_huyen == record['huyen']:
+                     index_xa_cu = ds_xa.index(record['xa'])
+                else:
+                     index_xa_cu = 0
+            except:
+                index_xa_cu = 0
+                
+            u_xa = col_y.selectbox("Xã", ds_xa, index=index_xa_cu, key="edit_xa")
+            
+            # Các ô nhập liệu khác
             u_nam = col_x.number_input("Năm", value=int(record['nam']), key="edit_nam")
             u_phongho = col_y.number_input("Phòng hộ", value=float(record['rung_phong_ho']), key="edit_ph")
             u_dacdung = col_x.number_input("Đặc dụng", value=float(record['rung_dac_dung']), key="edit_dd")
@@ -206,7 +216,6 @@ elif menu == "🛠️ Quản lý (Sửa/Xóa)":
             
             col_btn1, col_btn2 = st.columns([1, 4])
             
-            # Nút Cập nhật
             if col_btn1.button("Cập nhật 💾", type="primary"):
                 params = (u_huyen, u_xa, u_nam, u_phongho, u_dacdung, u_sanxuat, u_go, u_chephu, u_trongrung)
                 ok, msg = cap_nhat_sql(id_chon, params)
@@ -217,7 +226,6 @@ elif menu == "🛠️ Quản lý (Sửa/Xóa)":
                 else:
                     st.error(msg)
             
-            # Nút Xóa (Kèm cảnh báo)
             with col_btn2:
                 with st.expander("🗑️ Muốn xóa dòng này?"):
                     st.warning(f"Bạn có chắc muốn xóa bản ghi ID: {id_chon} không?")
