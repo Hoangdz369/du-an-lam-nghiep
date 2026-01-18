@@ -1,58 +1,91 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
+import time
 
-# --- 1. CẤU HÌNH TRANG WEB ---
+# --- CẤU HÌNH ---
 st.set_page_config(page_title="Quản lý Lâm Nghiệp", layout="wide")
-st.title("🌲 HỆ THỐNG QUẢN LÝ DỮ LIỆU LÂM NGHIỆP")
-st.write("Dữ liệu được lấy trực tiếp từ Database `lam_nghiep.db`")
+db_file = "lam_nghiep.db"
 
-# --- 2. HÀM LẤY DỮ LIỆU TỪ KHO ---
-# Streamlit có bộ nhớ đệm (cache), giúp load lại trang cực nhanh mà không cần connect lại db liên tục
-@st.cache_data
+# --- HÀM KẾT NỐI ---
+def get_connection():
+    return sqlite3.connect(db_file)
+
+# --- HÀM LẤY DỮ LIỆU ---
 def load_data():
-    conn = sqlite3.connect("lam_nghiep.db")
-    # Dùng Pandas đọc thẳng SQL ra bảng luôn (chỉ 1 dòng code!)
-    df = pd.read_sql_query("SELECT * FROM du_lieu_lam_nghiep", conn)
+    conn = get_connection()
+    df = pd.read_sql_query("SELECT * FROM du_lieu_lam_nghiep ORDER BY id DESC", conn)
     conn.close()
     return df
 
-try:
+# --- HÀM THÊM MỚI ---
+def them_moi(huyen, xa, nam, phong_ho, dac_dung, san_xuat, go, che_phu, trong_rung):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        query = """
+        INSERT INTO du_lieu_lam_nghiep 
+        (huyen, xa, nam, rung_phong_ho, rung_dac_dung, rung_san_xuat, san_luong_go, ty_le_che_phu, ket_qua_trong_rung)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        cursor.execute(query, (huyen, xa, nam, phong_ho, dac_dung, san_xuat, go, che_phu, trong_rung))
+        conn.commit()
+        conn.close()
+        return True, "Thêm thành công!"
+    except Exception as e:
+        return False, str(e)
+
+# --- GIAO DIỆN CHÍNH ---
+st.title("🌲 HỆ THỐNG QUẢN LÝ DỮ LIỆU LÂM NGHIỆP")
+
+# Tạo 2 tab: Xem dữ liệu và Nhập liệu
+tab1, tab2 = st.tabs(["📊 Bảng điều khiển (Dashboard)", "✍️ Nhập liệu & Chỉnh sửa"])
+
+# --- TAB 1: XEM DỮ LIỆU (Giống code cũ) ---
+with tab1:
     df = load_data()
-
-    # --- 3. TẠO BỘ LỌC BÊN THANH TRÁI (SIDEBAR) ---
-    st.sidebar.header("🔍 Bộ lọc dữ liệu")
+    # Thống kê nhanh
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Tổng số xã", len(df))
+    c1.metric("Tổng diện tích rừng", f"{df['rung_phong_ho'].sum() + df['rung_dac_dung'].sum() + df['rung_san_xuat'].sum():,.0f} ha")
     
-    # Lấy danh sách huyện duy nhất để đưa vào ô chọn
-    ds_huyen = df['huyen'].unique()
-    chon_huyen = st.sidebar.multiselect("Chọn Huyện:", ds_huyen)
+    st.dataframe(df, use_container_width=True)
 
-    # --- 4. XỬ LÝ LỌC ---
-    if chon_huyen:
-        # Nếu người dùng chọn huyện, thì lọc bảng theo huyện đó
-        df_hien_thi = df[df['huyen'].isin(chon_huyen)]
-    else:
-        # Nếu không chọn gì thì hiện hết
-        df_hien_thi = df
-
-    # --- 5. HIỂN THỊ SỐ LIỆU TỔNG QUAN (KPI) ---
-    cot1, cot2, cot3 = st.columns(3)
-    cot1.metric("Tổng số bản ghi", len(df_hien_thi))
-    cot2.metric("Diện tích Phòng hộ", f"{df_hien_thi['rung_phong_ho'].sum():,.0f} ha")
-    cot3.metric("Sản lượng gỗ", f"{df_hien_thi['san_luong_go'].sum():,.0f} m3")
-
-    # --- 6. HIỂN THỊ BẢNG DỮ LIỆU ---
-    st.subheader("📋 Danh sách chi tiết")
-    # Cái bảng này xịn hơn Treeview nhiều: Sắp xếp, tìm kiếm, phóng to được luôn
-    st.dataframe(df_hien_thi, use_container_width=True)
-
-    # --- 7. VẼ BIỂU ĐỒ (Bonus) ---
-    st.subheader("📊 Biểu đồ diện tích rừng phòng hộ theo Xã")
-    if not df_hien_thi.empty:
-        # Vẽ biểu đồ cột chỉ bằng 1 dòng lệnh
-        st.bar_chart(df_hien_thi, x="xa", y="rung_phong_ho")
-    else:
-        st.info("Chưa có dữ liệu để vẽ biểu đồ.")
-
-except Exception as e:
-    st.error(f"Có lỗi xảy ra: {e}. Bạn đã copy file 'lam_nghiep.db' vào cùng thư mục chưa?")
+# --- TAB 2: NHẬP LIỆU (MỚI) ---
+with tab2:
+    st.header("Thêm dữ liệu mới")
+    
+    # Tạo Form nhập liệu
+    with st.form("form_nhap_lieu", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            inp_huyen = st.text_input("Tên Huyện")
+            inp_xa = st.text_input("Tên Xã")
+            inp_nam = st.number_input("Năm", min_value=2000, max_value=2030, step=1, value=2024)
+        with col2:
+            inp_phongho = st.number_input("Rừng phòng hộ (ha)", min_value=0.0)
+            inp_dacdung = st.number_input("Rừng đặc dụng (ha)", min_value=0.0)
+            inp_sanxuat = st.number_input("Rừng sản xuất (ha)", min_value=0.0)
+            inp_go = st.number_input("Sản lượng gỗ (m3)", min_value=0.0)
+        
+        # Các chỉ số phụ
+        inp_chephu = st.slider("Tỷ lệ che phủ (%)", 0.0, 100.0, 45.0)
+        inp_trongrung = st.number_input("Kết quả trồng rừng (ha)", min_value=0.0)
+        
+        # Nút Submit
+        submitted = st.form_submit_button("Lưu dữ liệu 💾")
+        
+        if submitted:
+            if not inp_huyen or not inp_xa:
+                st.error("Vui lòng nhập tên Huyện và Xã!")
+            else:
+                thanh_cong, thong_bao = them_moi(
+                    inp_huyen, inp_xa, inp_nam, inp_phongho, 
+                    inp_dacdung, inp_sanxuat, inp_go, inp_chephu, inp_trongrung
+                )
+                if thanh_cong:
+                    st.success(thong_bao)
+                    time.sleep(1) 
+                    st.rerun() # Tự động tải lại trang để cập nhật bảng bên Tab 1
+                else:
+                    st.error(f"Lỗi: {thong_bao}")
